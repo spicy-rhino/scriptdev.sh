@@ -122,6 +122,7 @@ echo "[+] OwnCloud deployed. Access it at http://<OrangePi-IP>"
 # === 11. MediaMTX Setup and Systemd Service ===
 echo "[+] Downloading and installing MediaMTX (stable ARM64)..."
 cd "$USER_HOME"
+wget https://filesamples.com/samples/video/mp4/sample_640x360.mp4 -O sample.mp4
 curl -Lo mediamtx.tar.gz https://github.com/bluenviron/mediamtx/releases/download/v1.12.3/mediamtx_v1.12.3_linux_arm64.tar.gz | tee "$LOG_DIR/mediamtx_download.log"
 tar -xzf mediamtx.tar.gz | tee "$LOG_DIR/mediamtx_extract.log"
 rm -f mediamtx.tar.gz
