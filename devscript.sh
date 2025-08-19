@@ -144,10 +144,11 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-echo -e "\npaths:\n  all:\n    source: publisher" | sudo tee -a ~/mediamtx.yml
 sudo systemctl daemon-reload
 sudo systemctl enable mediamtx
 sudo systemctl start mediamtx
+echo -e "\npaths:\n  all:\n    source: publisher" | sudo tee -a ~/mediamtx.yml
+sudo systemctl restart mediamtx
 echo "[+] MediaMTX installed and running as a service. Logs: $USER_HOME/mediamtx.log"
 
 # === 12. Mumble Server Setup ===
