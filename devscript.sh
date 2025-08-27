@@ -5,7 +5,7 @@
 
 wget https://filesamples.com/samples/video/mp4/sample_640x360.mp4 -O sample.mp4
 
-curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
+sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
 
 sudo netplan apply
 
