@@ -1,7 +1,13 @@
 #!/bin/bash
 
-# Baseline v4 - Full Stack Setup Script for Orange Pi 5+ / RPi5 (Ubuntu 24.04.2 LTS)
+# Baseline v5 - Full Stack Setup Script for Orange Pi 5+ / RPi5 (Ubuntu 24.04.x LTS)
 # Services: TAK Server, OwnCloud (Docker), MediaMTX, Mumble Server
+
+wget https://filesamples.com/samples/video/mp4/sample_640x360.mp4 -O sample.mp4
+
+curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
+
+sudo netplan apply
 
 set -euo pipefail
 trap 'echo "[!] ERROR on line $LINENO: Command \"$BASH_COMMAND\" failed" >&2' ERR
@@ -51,6 +57,11 @@ sudo apt install --allow-change-held-packages -y \
   git curl v4l-utils ffmpeg docker.io containerd mumble-server \
   openssh-server openssh-client ssh net-tools dialog dos2unix | tee "$LOG_DIR/apt_install.log"
 echo "[+] Dependency installation complete."
+
+sudo install -d -o mumble-server -g mumble-server -m 750 /var/lib/mumble-server
+sudo test -f /etc/mumble-server.ini || sudo touch /etc/mumble-server.ini
+sudo chown root:root /etc/mumble-server.ini
+sudo systemctl enable --now mumble-server
 
 # === 3. Enable and Start Docker, SSH, and MediaMTX Services ===
 echo "[+] Enabling and starting Docker and SSH services..."
@@ -119,55 +130,143 @@ sudo docker run -d --restart unless-stopped -p 80:80 --name=owncloud owncloud:la
 }
 echo "[+] OwnCloud deployed. Access it at http://<OrangePi-IP>"
 
-# === 11. MediaMTX Setup and Systemd Service ===
-echo "[+] Downloading and installing MediaMTX (stable ARM64)..."
-cd "$USER_HOME"
-wget https://filesamples.com/samples/video/mp4/sample_640x360.mp4 -O sample.mp4
-curl -Lo mediamtx.tar.gz https://github.com/bluenviron/mediamtx/releases/download/v1.12.3/mediamtx_v1.12.3_linux_arm64.tar.gz | tee "$LOG_DIR/mediamtx_download.log"
-tar -xzf mediamtx.tar.gz | tee "$LOG_DIR/mediamtx_extract.log"
-rm -f mediamtx.tar.gz
-chmod +x "$USER_HOME/mediamtx"
-sudo chown "$ACTUAL_USER":"$ACTUAL_USER" "$USER_HOME/mediamtx"
+###############################################
+# Section 11 — MediaMTX setup and systemd service
+###############################################
+set -euo pipefail
 
-# Ensure mediamtx.yml allows all publishers by default
-if [ -f "$USER_HOME/mediamtx.yml" ]; then
-  # If an 'all_others:' path exists, convert it to 'all:' and set source to publisher
-  sudo sed -i 's/^  all_others:.*/  all:\n    source: publisher/' "$USER_HOME/mediamtx.yml"
-else
-  # Create a minimal config that allows all publishers
-  cat <<'EOF' | sudo tee "$USER_HOME/mediamtx.yml" >/dev/null
+echo "==> [Section 11] Installing MediaMTX and systemd unit"
+
+# ===== Config =====
+MTX_VERSION="${MTX_VERSION:-v1.12.3}"   # override by: export MTX_VERSION=v1.12.3
+BIN_NAME="mediamtx"
+
+# ===== Resolve user & home (support sudo and direct run) =====
+U="${SUDO_USER:-$USER}"
+HOME_DIR="$(eval echo "~$U")"
+echo "[*] Target user: $U  HOME=$HOME_DIR"
+
+# ===== Detect arch -> choose correct tarball =====
+arch="$(uname -m)"
+case "$arch" in
+  aarch64|arm64)  MTX_TAR="mediamtx_${MTX_VERSION}_linux_arm64.tar.gz" ;;
+  x86_64|amd64)   MTX_TAR="mediamtx_${MTX_VERSION}_linux_amd64.tar.gz" ;;
+  *)
+    echo "[-] Unsupported architecture: $arch"
+    exit 1
+    ;;
+esac
+MTX_URL="https://github.com/bluenviron/mediamtx/releases/download/${MTX_VERSION}/${MTX_TAR}"
+echo "[*] Download: $MTX_URL"
+
+# ===== Download & install to user's home =====
+sudo -u "$U" bash -c "
+  set -e
+  cd \"$HOME_DIR\"
+  rm -f \"$BIN_NAME\" mediamtx_*.tar.gz || true
+  curl -fsSL -o \"$MTX_TAR\" \"$MTX_URL\"
+  tar xzf \"$MTX_TAR\"
+  # Move binary out of extracted folder to HOME
+  mv mediamtx_*/* \"$HOME_DIR\" 2>/dev/null || true
+  rmdir mediamtx_* 2>/dev/null || true
+  rm -f \"$MTX_TAR\"
+  chmod +x \"$HOME_DIR/$BIN_NAME\"
+"
+
+# ===== Create default config if missing; otherwise fix common YAML hiccup =====
+if [ ! -f "$HOME_DIR/mediamtx.yml" ]; then
+  echo "[*] Writing default $HOME_DIR/mediamtx.yml"
+  sudo -u "$U" tee "$HOME_DIR/mediamtx.yml" >/dev/null <<'YAML'
+logLevel: info
+
+# Enable common servers
+rtsp: yes
+rtspTransports: [udp, multicast, tcp]
+rtspEncryption: "no"
+rtspAddress: :8554
+rtpAddress: :8000
+rtcpAddress: :8001
+
+rtmp: yes
+hls: yes
+webrtc: yes
+webrtcLocalUDPAddress: :8189
+srt: yes
+
+# Allow anonymous publish/read/playback by default
+authMethod: internal
+authInternalUsers:
+- user: any
+  pass:
+  ips: []
+  permissions:
+  - action: publish
+  - action: read
+  - action: playback
+
+# Defaults allow publishers
+pathDefaults:
+  source: publisher
+  overridePublisher: yes
+
 paths:
-  all:
+  all_others:
     source: publisher
-EOF
-  sudo chown "$ACTUAL_USER":"$ACTUAL_USER" "$USER_HOME/mediamtx.yml"
-  sudo chmod 644 "$USER_HOME/mediamtx.yml"
+YAML
+else
+  # Fix common copy/paste glitch where rtpAddress line gets merged into a comment
+  sudo -u "$U" sed -i 's/rtspTransports.rtpAddress:/\nrtpAddress:/' "$HOME_DIR/mediamtx.yml" || true
 fi
 
-# --- Create a systemd service for MediaMTX ---
-sudo tee /etc/systemd/system/mediamtx.service > /dev/null <<EOF
+# ===== Install username-agnostic *templated* systemd unit =====
+echo "[*] Installing /etc/systemd/system/mediamtx@.service"
+sudo tee /etc/systemd/system/mediamtx@.service >/dev/null <<'UNIT'
 [Unit]
-Description=MediaMTX
+Description=MediaMTX (%i)
 After=network.target
 
 [Service]
 Type=simple
-User=$ACTUAL_USER
-ExecStart=$USER_HOME/mediamtx
+User=%i
+Group=%i
+WorkingDirectory=/home/%i
+Environment=HOME=/home/%i
+ExecStart=/home/%i/mediamtx /home/%i/mediamtx.yml
 Restart=on-failure
+RestartSec=2
+
+# Optional hardening (uncomment if desired)
+# NoNewPrivileges=yes
+# PrivateTmp=yes
+# ProtectSystem=full
+# ProtectHome=read-only
+# ReadWritePaths=/home/%i
 
 [Install]
 WantedBy=multi-user.target
-EOF
+UNIT
 
+# Disable any old non-templated unit if present (ignore errors)
+sudo systemctl disable --now mediamtx 2>/dev/null || true
+
+# ===== Enable and start instance for current user =====
+echo "[*] Enabling mediamtx@$U"
 sudo systemctl daemon-reload
-sudo systemctl enable mediamtx
-sudo systemctl start mediamtx
-echo "[+] MediaMTX installed and running as a service. Logs: $USER_HOME/mediamtx.log"
+sudo systemctl enable --now "mediamtx@$U"
+
+# ===== Quick status pointers =====
+echo "[*] MediaMTX running as mediamtx@$U"
+echo "    View logs:  sudo journalctl -u mediamtx@$U -f"
+echo "    Test push:  ffmpeg -re -stream_loop -1 -i ~/sample.mp4 -c copy -an -fflags +genpts -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/test"
 
 # === 12. Mumble Server Setup ===
 echo "[+] Restarting Mumble service..."
 sudo systemctl restart mumble-server | tee "$LOG_DIR/mumble_restart.log"
+
+# === 13. RTSP Setup ===
+CONFIG="/home/${SUDO_USER:-$USER}/mediamtx.yml"
+sudo sed -i 's/^  all_others:.*/  all_others:\n    source: publisher/' "$CONFIG"
+sudo systemctl restart "mediamtx@${SUDO_USER:-$USER}"
 
 # === Completion ===
 echo "[✓] Full compute stack deployed on Orange Pi 5 Plus:"
