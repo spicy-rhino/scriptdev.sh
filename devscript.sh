@@ -26,9 +26,6 @@ sudo apt update -y | tee "$LOG_DIR/apt_update.log"
 sudo apt upgrade -y | tee "$LOG_DIR/apt_upgrade.log"
 echo "[+] System packages updated and upgraded."
 
-sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
-
-
 # === 1. Cleanup Previous Installations and Artifacts ===
 echo "[+] Cleaning up previous installations and residual files..."
 sudo systemctl stop takserver || true
@@ -266,6 +263,9 @@ sudo systemctl restart mumble-server | tee "$LOG_DIR/mumble_restart.log"
 CONFIG="/home/${SUDO_USER:-$USER}/mediamtx.yml"
 sudo sed -i 's/^  all_others:.*/  all_others:\n    source: publisher/' "$CONFIG"
 sudo systemctl restart "mediamtx@${SUDO_USER:-$USER}"
+
+# === 14. Radio USB Netplan Download ===
+sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
 
 # === Completion ===
 echo "[✓] Full compute stack deployed on Orange Pi 5 Plus:"
