@@ -267,6 +267,18 @@ sudo systemctl restart "mediamtx@${SUDO_USER:-$USER}"
 # === 14. Radio USB Netplan Download ===
 sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
 
+# === 15. Edit routable.d to make MDNS function on all NICs ===
+sudo tee /etc/networkd-dispatcher/routable.d/99-restart-avahi >/dev/null <<'EOF'
+#!/bin/bash
+# Restart Avahi on ANY interface becoming routable
+# Triggered by networkd-dispatcher 'routable' event
+
+logger "Dispatcher: restarting avahi-daemon due to $IFACE becoming routable"
+systemctl restart avahi-daemon
+EOF
+
+sudo chmod +x /etc/networkd-dispatcher/routable.d/99-restart-avahi
+
 # === Completion ===
 echo "[✓] Full compute stack deployed on Orange Pi 5 Plus:"
 echo "    - TAK Admin UI: https://<OrangePi-IP>:8443"
