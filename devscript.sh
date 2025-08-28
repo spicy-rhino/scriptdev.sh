@@ -5,8 +5,6 @@
 
 wget https://filesamples.com/samples/video/mp4/sample_640x360.mp4 -O sample.mp4
 
-sudo netplan apply
-
 set -euo pipefail
 trap 'echo "[!] ERROR on line $LINENO: Command \"$BASH_COMMAND\" failed" >&2' ERR
 
@@ -22,14 +20,14 @@ else
 fi
 USER_HOME=$(eval echo "~$ACTUAL_USER")
 
-# ===0.01 Download Netplan File for Radio Adapters ===
-sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
-
-# === 0.02 Update System First ===
+# === 0. Update System First ===
 echo "[+] Updating and upgrading system packages (this may take a while)..."
 sudo apt update -y | tee "$LOG_DIR/apt_update.log"
 sudo apt upgrade -y | tee "$LOG_DIR/apt_upgrade.log"
 echo "[+] System packages updated and upgraded."
+
+sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
+
 
 # === 1. Cleanup Previous Installations and Artifacts ===
 echo "[+] Cleaning up previous installations and residual files..."
