@@ -268,8 +268,8 @@ sudo systemctl restart "mediamtx@${SUDO_USER:-$USER}"
 sudo curl -fsSL https://raw.githubusercontent.com/spicy-rhino/script.sh/main/99-radio-usb-static.yaml -o /etc/netplan/99-radio-usb-static.yaml
 
 # === 15. Add radio IPs to Owncloud approved domain list ===
-docker exec --user www-data owncloud ./occ config:system:set trusted_domains 2 --value=172.20.100.100
-docker exec --user www-data owncloud ./occ config:system:set trusted_domains 3 --value=10.100.100.100
+docker exec --user www-data owncloud ./occ config:system:set trusted_domains 2 --value="172.20.100.100"
+docker exec --user www-data owncloud ./occ config:system:set trusted_domains 3 --value="10.100.100.100"
 
 # === Completion ===
 echo "[✓] Full compute stack deployed on Orange Pi 5 Plus:"
